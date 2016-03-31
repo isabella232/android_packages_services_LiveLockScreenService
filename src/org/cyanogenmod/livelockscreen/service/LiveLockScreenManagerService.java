@@ -17,12 +17,16 @@
 package org.cyanogenmod.livelockscreen.service;
 
 import android.content.ComponentName;
+import android.content.ContentResolver;
+import android.database.ContentObserver;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Message;
 import android.os.Process;
 import android.os.RemoteException;
+import android.os.UserHandle;
+import android.text.TextUtils;
 import android.util.Log;
 
 import cyanogenmod.app.BaseLiveLockManagerService;
@@ -36,10 +40,13 @@ public class LiveLockScreenManagerService extends BaseLiveLockManagerService {
     private static final boolean DEBUG = false;
 
     private LiveLockScreenInfo mCurrentLiveLockScreen;
+    private boolean mLiveLockScreenEnabled;
 
     private WorkerHandler mHandler;
     private final HandlerThread mWorkerThread = new HandlerThread("worker",
             Process.THREAD_PRIORITY_BACKGROUND);
+
+    private SettingsObserver mSettingsObserver;
 
     private class WorkerHandler extends Handler {
         private static final int MSG_UPDATE_CURRENT = 1000;
@@ -74,13 +81,18 @@ public class LiveLockScreenManagerService extends BaseLiveLockManagerService {
 
     @Override
     public LiveLockScreenInfo getCurrentLiveLockScreen() throws RemoteException {
-        return mCurrentLiveLockScreen;
+        return mLiveLockScreenEnabled ? mCurrentLiveLockScreen : null;
     }
 
     @Override
     public void updateDefaultLiveLockScreen(LiveLockScreenInfo llsInfo) throws RemoteException {
         Message msg = mHandler.obtainMessage(WorkerHandler.MSG_UPDATE_CURRENT, llsInfo);
         mHandler.sendMessage(msg);
+    }
+
+    @Override
+    public boolean getLiveLockScreenEnabled() throws RemoteException {
+        return mLiveLockScreenEnabled;
     }
 
     public LiveLockScreenManagerService() {
@@ -93,8 +105,16 @@ public class LiveLockScreenManagerService extends BaseLiveLockManagerService {
         if (DEBUG) Log.d(TAG, "service created");
         mWorkerThread.start();
         mHandler = new WorkerHandler(mWorkerThread.getLooper());
+        mSettingsObserver = new SettingsObserver(mHandler);
+        mSettingsObserver.observe();
 
         mCurrentLiveLockScreen = getDefaultLiveLockScreenInternal();
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        mSettingsObserver.unobserve();
     }
 
     private void handleUpdateCurrentLiveLockScreenLocked(LiveLockScreenInfo llsInfo) {
@@ -108,11 +128,47 @@ public class LiveLockScreenManagerService extends BaseLiveLockManagerService {
         final String defComponent = CMSettings.Secure.getString(getContentResolver(),
                 CMSettings.Secure.DEFAULT_LIVE_LOCK_SCREEN_COMPONENT);
 
-        if (defComponent != null) {
+        if (!TextUtils.isEmpty(defComponent)) {
             return new LiveLockScreenInfo.Builder()
                     .setComponent(ComponentName.unflattenFromString(defComponent))
                     .build();
         }
         return null;
+    }
+
+    private class SettingsObserver extends ContentObserver {
+        /**
+         * Creates a content observer.
+         *
+         * @param handler The handler to run {@link #onChange} on, or null if none.
+         */
+        public SettingsObserver(Handler handler) {
+            super(handler);
+        }
+
+        public void observe() {
+            ContentResolver resolver = getContentResolver();
+            resolver.registerContentObserver(CMSettings.Secure.getUriFor(
+                    CMSettings.Secure.LIVE_LOCK_SCREEN_ENABLED), false, this,
+                    UserHandle.USER_ALL);
+            onChange(true);
+        }
+
+        public void unobserve() {
+            getContentResolver().unregisterContentObserver(this);
+        }
+
+        @Override
+        public void onChange(boolean selfChange) {
+            mLiveLockScreenEnabled = CMSettings.Secure.getInt(getContentResolver(),
+                    CMSettings.Secure.LIVE_LOCK_SCREEN_ENABLED, 0) == 1;
+            if (!selfChange) {
+                try {
+                    notifyChangeListeners(getCurrentLiveLockScreen());
+                } catch (RemoteException e) {
+                    /* ignore */
+                }
+            }
+        }
     }
 }
