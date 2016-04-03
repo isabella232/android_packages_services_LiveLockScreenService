@@ -149,8 +149,7 @@ public class LiveLockScreenManagerService extends BaseLiveLockManagerService {
         public void observe() {
             ContentResolver resolver = getContentResolver();
             resolver.registerContentObserver(CMSettings.Secure.getUriFor(
-                    CMSettings.Secure.LIVE_LOCK_SCREEN_ENABLED), false, this,
-                    UserHandle.USER_ALL);
+                    CMSettings.Secure.LIVE_LOCK_SCREEN_ENABLED), false, this);
             onChange(true);
         }
 
