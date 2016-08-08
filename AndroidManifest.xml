@@ -20,7 +20,8 @@
 
     <uses-permission android:name="cyanogenmod.permission.LIVE_LOCK_SCREEN_MANAGER_PROVIDER"/>
 
-    <application android:label="@string/app_name">
+    <application android:label="@string/app_name"
+                 android:icon="@mipmap/ic_live_lock_screen_service">
 
         <service android:name="org.cyanogenmod.livelockscreen.service.LiveLockScreenManagerService"
                  android:enabled="true"
